@@ -1,3 +1,31 @@
+# Function to parse the script arguments
+function Parse-ScriptArguments {
+    param (
+        [string[]]$Arguments
+    )
+
+    for ($i = 0; $i -lt $Arguments.Length; $i++) {
+        if ($Arguments[$i] -eq "-helm-branch" -and $i + 1 -lt $Arguments.Length) {
+            return $Arguments[$i + 1]
+        }
+    }
+
+    return $null
+}
+
+# Function to check if a branch name was provided
+function Check-BranchNameProvided {
+    param (
+        [string]$Branch
+    )
+
+    if (-not $Branch) {
+        Write-Host "Please provide a branch name using '-helm-branch' argument."
+        exit 1
+    }
+}
+
+# Function to deploy Helm chart
 function Deploy-HelmChart {
     param (
         [Parameter(Mandatory=$true)]
@@ -14,7 +42,7 @@ function Deploy-HelmChart {
     Set-Location $cloneDirectory
 
     # Fetch branch names from the remote repository
-    git fetch
+    git fetch -q
 
     # Get the current branch name
     $gitBranch = git rev-parse --abbrev-ref HEAD
@@ -27,15 +55,15 @@ function Deploy-HelmChart {
         $valuesFile = "values-dev.yaml"
     } else {
         $environment = $BranchName.ToLower()
-        $valuesFile = "values-$environment.yaml"
+        $valuesFile = "values-dev.yaml"
     }
 
     # Check if the specified branch exists in the repository
     $remoteBranch = "origin/$BranchName"
 
-    if (git branch --list --remote $remoteBranch) {
+    if (git branch --list --remote $remoteBranch -q) {
         # Switch to the specified Git branch
-        git checkout $remoteBranch
+        git checkout $remoteBranch -q
 
         # Determine the environment and values file based on the Git branch
         if ($BranchName -eq "feature/memspec") {
@@ -46,7 +74,7 @@ function Deploy-HelmChart {
             $valuesFile = "values-$environment.yaml"
         } else {
             $environment = $BranchName.ToLower()
-            $valuesFile = "values-$environment.yaml"
+            $valuesFile = "values-dev.yaml"
         }
 
         # Set the chart path
@@ -64,35 +92,25 @@ function Deploy-HelmChart {
     }
 
     # Display the determined environment
-	Write-Host ""
+    Write-Host ""
     Write-Host "Environment: $environment"
-	Write-Host ""
-	Write-Host "Current directory: $chartPath"
+    Write-Host ""
+    Write-Host "Current directory: $chartPath"
     Write-Host ""
     $releaseName = "arkcase"
-	
-	Set-Location src/app
+
+    Set-Location src/app
 
     # Run Helm command to deploy the chart
     helm install $releaseName . --values $valuesFilePath
-	Write-Host ""
+    Write-Host ""
 }
 
 # Parse the script arguments
-$BranchName = $null
-
-for ($i = 0; $i -lt $args.Length; $i++) {
-    if ($args[$i] -eq "-helm-branch" -and $i + 1 -lt $args.Length) {
-        $BranchName = $args[$i + 1]
-        break
-    }
-}
+$BranchName = Parse-ScriptArguments -Arguments $args
 
 # Check if a branch name was provided
-if (-not $BranchName) {
-    Write-Host "Please provide a branch name using '-helm-branch' argument."
-    exit 1
-}
+Check-BranchNameProvided -Branch $BranchName
 
 # Call the function and pass the Git branch as an argument
 Deploy-HelmChart -BranchName $BranchName
